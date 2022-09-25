@@ -4,7 +4,7 @@ use std::{
     os::windows::raw::HANDLE,
     ptr::null_mut,
     sync::Mutex,
-    thread::{self, __FastLocalKeyInner},
+    thread::{self},
 };
 
 use winapi::{
@@ -17,10 +17,10 @@ use winapi::{
         SetWindowsHookExW, UnhookWindowsHookEx, INPUT, INPUT_KEYBOARD, KBDLLHOOKSTRUCT, KEYBDINPUT,
         KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, LPINPUT, VK_BACK, VK_CAPITAL,
         VK_CONTROL, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F10, VK_F11, VK_F12, VK_F2,
-        VK_F21, VK_F22, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_HOME, VK_INSERT,
-        VK_LCONTROL, VK_LEFT, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_NEXT, VK_OEM_1, VK_OEM_2,
-        VK_OEM_3, VK_OEM_4, VK_OEM_COMMA, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_RMENU, VK_SPACE, VK_UP,
-        WH_KEYBOARD_LL, WM_KEYUP,
+        VK_F21, VK_F22, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_GAMEPAD_LEFT_SHOULDER,
+        VK_HOME, VK_INSERT, VK_LCONTROL, VK_LEFT, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_NEXT,
+        VK_OEM_1, VK_OEM_2, VK_OEM_3, VK_OEM_4, VK_OEM_COMMA, VK_PRIOR, VK_RCONTROL, VK_RETURN,
+        VK_RIGHT, VK_RMENU, VK_RSHIFT, VK_SHIFT, VK_SPACE, VK_UP, WH_KEYBOARD_LL, WM_KEYUP,
     },
 };
 static mut SHARED_IGNORED_EVENTS: MaybeUninit<Mutex<Vec<i32>>> = MaybeUninit::uninit();
@@ -206,7 +206,7 @@ unsafe extern "system" fn key_handler_callback(
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
-    let key_map = ExtensionMap::new();
+    let mut key_map = ExtensionMap::new();
     let hook_struct = l_param as *mut KBDLLHOOKSTRUCT;
     let vk: i32 = (*hook_struct)
         .vkCode
@@ -214,10 +214,8 @@ unsafe extern "system" fn key_handler_callback(
         .expect("vk doesn't fit in i32");
 
     let is_release = w_param == WM_KEYUP.try_into().unwrap();
-    //most significant bit tells you if the key is being pressed
-    //clean output by bitwise and-ing and comparing to the exact bit representation
-    let modifier_active =
-        ((GetAsyncKeyState(VK_F22) as u16) & 0b_1000_0000_0000_0000) == 0b_1000_0000_0000_0000;
+
+    let modifier_active = is_key_active(VK_F22);
 
     //remap capslock
     if vk == VK_CAPITAL {
@@ -243,16 +241,33 @@ unsafe extern "system" fn key_handler_callback(
     }
 
     if modifier_active && key_map.key_map.contains_key(&vk) {
-        let output_keys = key_map.key_map.get(&vk).expect("key in dictionary");
+        let output_keys = key_map.key_map.get_mut(&vk).expect("key in dictionary");
 
         println!("Rebinding {:#0x} to {:?}", vk, output_keys);
 
         // When running queues assume we run them on the key press not on the release
         if output_keys.len() > 1 && !is_release {
+            //compensate for existing keys
+
+            fn compensate_key(vk: i32, output_keys: &mut Vec<KeyOutput>) {
+                let is_active = is_key_active(vk);
+                if is_active {
+                    println!("Compensating for {:#0x}", vk);
+                    output_keys.insert(0, KeyOutput::up(vk));
+                    output_keys.insert(0, KeyOutput::down(vk));
+                }
+            }
+            compensate_key(VK_LSHIFT, output_keys);
+            compensate_key(VK_RSHIFT, output_keys);
+            compensate_key(VK_LCONTROL, output_keys);
+            compensate_key(VK_RCONTROL, output_keys);
+            compensate_key(VK_LMENU, output_keys);
+            compensate_key(VK_RMENU, output_keys);
+
             let mut codes = output_keys.iter().map(|k| k.code).collect::<Vec<i32>>();
             ignored_events_list.append(&mut codes);
             drop(ignored_events_list);
-            send_keys(output_keys, is_release);
+            send_keys(&output_keys, is_release);
         } else {
             let first_key_in_output = output_keys.first().expect("should be at least one key");
             drop(ignored_events_list);
@@ -262,6 +277,14 @@ unsafe extern "system" fn key_handler_callback(
     }
 
     CallNextHookEx(null_mut(), n_code, w_param, l_param)
+}
+
+fn is_key_active(vk: i32) -> bool {
+    unsafe {
+        //most significant bit tells you if the key is being pressed
+        //clean output by bitwise and-ing and comparing to the exact bit representation
+        return ((GetAsyncKeyState(vk) as u16) & 0b_1000_0000_0000_0000) == 0b_1000_0000_0000_0000;
+    }
 }
 
 fn send_keys(keys: &Vec<KeyOutput>, is_release: bool) {
@@ -311,7 +334,7 @@ fn to_win_key_input(key: i32, is_release: bool) -> INPUT {
                 .expect("mapping vk to scan failed"),
         };
     }
-    let mut input = INPUT {
+    let input = INPUT {
         type_: INPUT_KEYBOARD,
         u: input_u,
     };
