@@ -1,3 +1,4 @@
+// #![windows_subsystem = "windows"]
 use std::{
     collections::HashMap,
     mem::{size_of, zeroed, MaybeUninit},
@@ -15,12 +16,13 @@ use winapi::{
     um::winuser::{
         CallNextHookEx, GetAsyncKeyState, GetMessageW, INPUT_u, MapVirtualKeyW, SendInput,
         SetWindowsHookExW, UnhookWindowsHookEx, INPUT, INPUT_KEYBOARD, KBDLLHOOKSTRUCT, KEYBDINPUT,
-        KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, LPINPUT, VK_BACK, VK_CAPITAL,
-        VK_CONTROL, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F10, VK_F11, VK_F12, VK_F2,
-        VK_F21, VK_F22, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_GAMEPAD_LEFT_SHOULDER,
-        VK_HOME, VK_INSERT, VK_LCONTROL, VK_LEFT, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_NEXT,
-        VK_OEM_1, VK_OEM_2, VK_OEM_3, VK_OEM_4, VK_OEM_COMMA, VK_PRIOR, VK_RCONTROL, VK_RETURN,
-        VK_RIGHT, VK_RMENU, VK_RSHIFT, VK_SHIFT, VK_SPACE, VK_UP, WH_KEYBOARD_LL, WM_KEYUP,
+        KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, LPINPUT, VK_BACK,
+        VK_BROWSER_BACK, VK_BROWSER_FORWARD, VK_CAPITAL, VK_CONTROL, VK_DELETE, VK_DOWN, VK_END,
+        VK_ESCAPE, VK_F1, VK_F10, VK_F11, VK_F12, VK_F2, VK_F21, VK_F22, VK_F3, VK_F4, VK_F5,
+        VK_F6, VK_F7, VK_F8, VK_F9, VK_GAMEPAD_LEFT_SHOULDER, VK_HOME, VK_INSERT, VK_LCONTROL,
+        VK_LEFT, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_NEXT, VK_OEM_1, VK_OEM_2, VK_OEM_3,
+        VK_OEM_4, VK_OEM_COMMA, VK_OEM_MINUS, VK_PRIOR, VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_RMENU,
+        VK_RSHIFT, VK_SHIFT, VK_SPACE, VK_UP, WH_KEYBOARD_LL, WM_KEYUP,
     },
 };
 static mut SHARED_IGNORED_EVENTS: MaybeUninit<Mutex<Vec<i32>>> = MaybeUninit::uninit();
@@ -110,14 +112,40 @@ struct ExtensionMap {
 impl ExtensionMap {
     fn new() -> ExtensionMap {
         let mut key_map: HashMap<i32, Vec<KeyOutput>> = HashMap::new();
+
+        //==========================
+        //number line off keyboard 1-_
+        //==========================
+
+        key_map.insert(VK_1, vec![KeyOutput::follow(VK_F1)]);
+        key_map.insert(VK_2, vec![KeyOutput::follow(VK_F2)]);
+        key_map.insert(VK_3, vec![KeyOutput::follow(VK_F3)]);
+        key_map.insert(VK_4, vec![KeyOutput::follow(VK_F4)]);
+        key_map.insert(VK_5, vec![KeyOutput::follow(VK_F5)]);
+        key_map.insert(VK_6, vec![KeyOutput::follow(VK_F6)]);
+        key_map.insert(VK_7, vec![KeyOutput::follow(VK_F7)]);
+        key_map.insert(VK_8, vec![KeyOutput::follow(VK_F8)]);
+        key_map.insert(VK_0, vec![KeyOutput::follow(VK_F10)]);
+        key_map.insert(VK_OEM_4, vec![KeyOutput::follow(VK_F11)]); // à key
+        key_map.insert(VK_OEM_MINUS, vec![KeyOutput::follow(VK_F12)]); // à keys
+
         //==========================
         //top line off keyboard a->p
         //==========================
 
         key_map.insert(VK_A, vec![KeyOutput::follow(VK_ESCAPE)]);
-        // self.keyMap.insert(VK_Z, VK_BACK);//  I think browser backwards
-        //self.keyMap.insert(VK_E, VK_E); //ctrl + f
-        //self.keyMap.insert(VK_R, VK_R); //  I think browser forward
+        key_map.insert(VK_Z, vec![KeyOutput::follow(VK_BROWSER_BACK)]); //
+        key_map.insert(
+            VK_E,
+            vec![
+                KeyOutput::down(VK_LCONTROL),
+                KeyOutput::down(VK_F),
+                KeyOutput::up(VK_F),
+                KeyOutput::up(VK_LCONTROL),
+            ],
+        );
+        key_map.insert(VK_Z, vec![KeyOutput::follow(VK_BROWSER_FORWARD)]);
+
         key_map.insert(VK_T, vec![KeyOutput::follow(VK_INSERT)]);
         key_map.insert(VK_Y, vec![KeyOutput::follow(VK_PRIOR)]); //page up
         key_map.insert(VK_U, vec![KeyOutput::follow(VK_HOME)]);
@@ -214,8 +242,9 @@ unsafe extern "system" fn key_handler_callback(
         .expect("vk doesn't fit in i32");
 
     let is_release = w_param == WM_KEYUP.try_into().unwrap();
-
     let modifier_active = is_key_active(VK_F22);
+
+    println!("handling : {:#0x}", vk);
 
     //remap capslock
     if vk == VK_CAPITAL {
@@ -285,7 +314,7 @@ fn is_key_active(vk: i32) -> bool {
         //clean output by bitwise and-ing and comparing to the exact bit representation
         return ((GetAsyncKeyState(vk) as u16) & 0b_1000_0000_0000_0000) == 0b_1000_0000_0000_0000;
     }
-}
+}h
 
 fn send_keys(keys: &Vec<KeyOutput>, is_release: bool) {
     let mut inputs: Vec<INPUT> = keys
