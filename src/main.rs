@@ -39,7 +39,7 @@ fn main() {
             unsafe {
                 GetMessageW(&mut msg, null_mut(), 0, 0);
             };
-            println!("{}", msg.message);
+            log::debug!("{}", msg.message);
         });
 
     loop {}
@@ -48,14 +48,13 @@ fn main() {
 fn run_keyboard_interceptor() -> CleanUpHookStruct {
     let hook: *mut HHOOK__;
     unsafe {
-        println!("setting hook");
         hook = SetWindowsHookExW(
             WH_KEYBOARD_LL,
             Some(key_handler_callback),
             0 as HINSTANCE,
             0,
         );
-        println!("installed hook {:?}", hook)
+        log::debug!("installed hook {:?}", hook)
     }
     CleanUpHookStruct { hook }
 }
@@ -65,7 +64,7 @@ struct CleanUpHookStruct {
 }
 impl CleanUpHookStruct {
     fn un_hook(&self) {
-        println!("cleaning hook {:?}", self.hook);
+        log::debug!("cleaning hook {:?}", self.hook);
         unsafe {
             UnhookWindowsHookEx(self.hook);
         }
@@ -244,21 +243,41 @@ unsafe extern "system" fn key_handler_callback(
     let is_release = w_param == WM_KEYUP.try_into().unwrap();
     let modifier_active = is_key_active(VK_F22);
 
-    println!("handling : {:#0x}", vk);
+    log::debug!("handling : {:#0x} ", vk);
+    log::debug!("VK_LSHIFT:: {}", is_key_active(VK_LSHIFT));
+    log::debug!("VK_SHIFT:: {}", is_key_active(VK_SHIFT));
+    log::debug!("VK_RSHIFT:: {}", is_key_active(VK_RSHIFT));
+    log::debug!("VK_LCONTROL:: {}", is_key_active(VK_LCONTROL));
+    log::debug!("VK_CONTROL:: {}", is_key_active(VK_CONTROL));
+    log::debug!("VK_RCONTROL:: {}", is_key_active(VK_RCONTROL));
 
     //remap capslock
     if vk == VK_CAPITAL {
         //to f22
-        println!("Setting modifier {}", !is_release);
+        log::debug!("Setting modifier {}", !is_release);
+        //when releasing the modifier
+        //make sure to clean up the shift/control/alt
+
+        if is_key_active(VK_SHIFT) {
+            send_key(VK_SHIFT, true);
+        }
+        if is_key_active(VK_CONTROL) {
+            send_key(VK_CONTROL, true);
+        }
+        if is_key_active(VK_MENU) {
+            send_key(VK_MENU, true);
+        }
+
         send_key(VK_F22, is_release);
         return 1;
     }
     let mut ignored_events_list = SHARED_IGNORED_EVENTS.assume_init_mut().lock().unwrap();
 
     if ignored_events_list.contains(&vk) {
-        println!(
+        log::debug!(
             "ignored event list {:?} contained {:#0x}",
-            ignored_events_list, vk
+            ignored_events_list,
+            vk
         );
         let index = ignored_events_list
             .iter()
@@ -272,7 +291,7 @@ unsafe extern "system" fn key_handler_callback(
     if modifier_active && key_map.key_map.contains_key(&vk) {
         let output_keys = key_map.key_map.get_mut(&vk).expect("key in dictionary");
 
-        println!("Rebinding {:#0x} to {:?}", vk, output_keys);
+        log::debug!("Rebinding {:#0x} to {:?}", vk, output_keys);
 
         // When running queues assume we run them on the key press not on the release
         if output_keys.len() > 1 && !is_release {
@@ -281,7 +300,7 @@ unsafe extern "system" fn key_handler_callback(
             fn compensate_key(vk: i32, output_keys: &mut Vec<KeyOutput>) {
                 let is_active = is_key_active(vk);
                 if is_active {
-                    println!("Compensating for {:#0x}", vk);
+                    log::debug!("Compensating for {:#0x}", vk);
                     output_keys.insert(0, KeyOutput::up(vk));
                     output_keys.insert(0, KeyOutput::down(vk));
                 }
@@ -314,7 +333,7 @@ fn is_key_active(vk: i32) -> bool {
         //clean output by bitwise and-ing and comparing to the exact bit representation
         return ((GetAsyncKeyState(vk) as u16) & 0b_1000_0000_0000_0000) == 0b_1000_0000_0000_0000;
     }
-}h
+}
 
 fn send_keys(keys: &Vec<KeyOutput>, is_release: bool) {
     let mut inputs: Vec<INPUT> = keys
@@ -328,7 +347,7 @@ fn send_keys(keys: &Vec<KeyOutput>, is_release: bool) {
             to_win_key_input(key.code, sim_release)
         })
         .collect();
-    println!("sendingn keys {:?}", inputs.len());
+    log::debug!("sendingn keys {:?}", inputs.len());
     let ipsize = size_of::<INPUT>() as i32;
     let pointer_to_inputs = inputs.as_mut_ptr();
 
