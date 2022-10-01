@@ -1,3 +1,4 @@
+use core::fmt;
 // #![windows_subsystem = "windows"]
 use std::{
     collections::HashMap,
@@ -10,7 +11,7 @@ use std::{
 
 use winapi::{
     shared::{
-        minwindef::{HINSTANCE, LPARAM, LRESULT, WPARAM},
+        minwindef::{HINSTANCE, LPARAM, LRESULT, UINT, WPARAM},
         windef::HHOOK__,
     },
     um::winuser::{
@@ -22,11 +23,13 @@ use winapi::{
         VK_F6, VK_F7, VK_F8, VK_F9, VK_GAMEPAD_LEFT_SHOULDER, VK_HOME, VK_INSERT, VK_LCONTROL,
         VK_LEFT, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_NEXT, VK_OEM_1, VK_OEM_2, VK_OEM_3,
         VK_OEM_4, VK_OEM_COMMA, VK_OEM_MINUS, VK_PRIOR, VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_RMENU,
-        VK_RSHIFT, VK_SHIFT, VK_SPACE, VK_UP, WH_KEYBOARD_LL, WM_KEYUP,
+        VK_RSHIFT, VK_SHIFT, VK_SPACE, VK_UP, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
+        WM_SYSKEYUP,
     },
 };
 static mut SHARED_IGNORED_EVENTS: MaybeUninit<Mutex<Vec<i32>>> = MaybeUninit::uninit();
 fn main() {
+    env_logger::init();
     unsafe {
         SHARED_IGNORED_EVENTS.write(Mutex::new(Vec::<i32>::new()));
     }
@@ -78,11 +81,18 @@ enum KeyState {
     FollowExisting,
 }
 
-#[derive(Eq, Hash, PartialEq, Debug)]
+#[derive(Eq, Hash, PartialEq)]
 struct KeyOutput {
     code: i32,
     state: KeyState,
 }
+
+impl fmt::Debug for KeyOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "KeyOuput[{:0x},{:?}]", self.code, self.state)
+    }
+}
+
 impl KeyOutput {
     fn up(code: i32) -> KeyOutput {
         KeyOutput {
@@ -228,11 +238,37 @@ impl ExtensionMap {
     }
 }
 
+fn modifier_key_print() -> String {
+    let mut modifier_string = String::new();
+    if is_key_active(VK_LSHIFT) {
+        modifier_string.push_str(" + LShift")
+    }
+    if is_key_active(VK_RSHIFT) {
+        modifier_string.push_str(" + RShift")
+    }
+
+    if is_key_active(VK_LCONTROL) {
+        modifier_string.push_str(" + LControl")
+    }
+    if is_key_active(VK_RCONTROL) {
+        modifier_string.push_str(" + RControl")
+    }
+
+    if is_key_active(VK_LMENU) {
+        modifier_string.push_str(" + LAlt")
+    }
+    if is_key_active(VK_RMENU) {
+        modifier_string.push_str(" + RAlt")
+    }
+    return modifier_string;
+}
+
 unsafe extern "system" fn key_handler_callback(
     n_code: libc::c_int,
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
+    log::debug!("=================================================");
     let mut key_map = ExtensionMap::new();
     let hook_struct = l_param as *mut KBDLLHOOKSTRUCT;
     let vk: i32 = (*hook_struct)
@@ -240,21 +276,28 @@ unsafe extern "system" fn key_handler_callback(
         .try_into()
         .expect("vk doesn't fit in i32");
 
-    let is_release = w_param == WM_KEYUP.try_into().unwrap();
+    let is_release =
+        w_param == WM_KEYUP.try_into().unwrap() || w_param == WM_SYSKEYUP.try_into().unwrap();
+    log::debug!(
+        "w_param {}",
+        match w_param as UINT {
+            WM_KEYUP => "WM_KEYUP",
+            WM_SYSKEYUP => "WM_SYSKEYUP",
+            WM_KEYDOWN => "WM_KEYDOWN",
+            WM_SYSKEYDOWN => "WM_SYSKEYDOWN",
+            _ => "",
+        }
+    );
     let modifier_active = is_key_active(VK_F22);
 
-    log::debug!("handling : {:#0x} ", vk);
-    log::debug!("VK_LSHIFT:: {}", is_key_active(VK_LSHIFT));
-    log::debug!("VK_SHIFT:: {}", is_key_active(VK_SHIFT));
-    log::debug!("VK_RSHIFT:: {}", is_key_active(VK_RSHIFT));
-    log::debug!("VK_LCONTROL:: {}", is_key_active(VK_LCONTROL));
-    log::debug!("VK_CONTROL:: {}", is_key_active(VK_CONTROL));
-    log::debug!("VK_RCONTROL:: {}", is_key_active(VK_RCONTROL));
+    log::debug!(
+        "handling :  {:#0x}{} - {}",
+        vk,
+        modifier_key_print(),
+        if is_release { "up" } else { "down" }
+    );
 
-    //remap capslock
-    if vk == VK_CAPITAL {
-        //to f22
-        log::debug!("Setting modifier {}", !is_release);
+    if vk == VK_F22 && is_release {
         //when releasing the modifier
         //make sure to clean up the shift/control/alt
 
@@ -267,6 +310,12 @@ unsafe extern "system" fn key_handler_callback(
         if is_key_active(VK_MENU) {
             send_key(VK_MENU, true);
         }
+    }
+
+    //remap capslock
+    if vk == VK_CAPITAL {
+        log::debug!("Setting modifier {}", !is_release);
+        //to f22
 
         send_key(VK_F22, is_release);
         return 1;
