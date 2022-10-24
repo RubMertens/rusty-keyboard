@@ -20,11 +20,11 @@ use winapi::{
         KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, LPINPUT, VK_BACK,
         VK_BROWSER_BACK, VK_BROWSER_FORWARD, VK_CAPITAL, VK_CONTROL, VK_DELETE, VK_DOWN, VK_END,
         VK_ESCAPE, VK_F1, VK_F10, VK_F11, VK_F12, VK_F2, VK_F21, VK_F22, VK_F3, VK_F4, VK_F5,
-        VK_F6, VK_F7, VK_F8, VK_F9, VK_GAMEPAD_LEFT_SHOULDER, VK_HOME, VK_INSERT, VK_LCONTROL,
-        VK_LEFT, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_NEXT, VK_OEM_1, VK_OEM_2, VK_OEM_3,
-        VK_OEM_4, VK_OEM_COMMA, VK_OEM_MINUS, VK_PRIOR, VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_RMENU,
-        VK_RSHIFT, VK_SHIFT, VK_SPACE, VK_UP, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
-        WM_SYSKEYUP,
+        VK_F6, VK_F7, VK_F8, VK_F9, VK_GAMEPAD_LEFT_SHOULDER, VK_GAMEPAD_RIGHT_SHOULDER, VK_HOME,
+        VK_INSERT, VK_LCONTROL, VK_LEFT, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_NEXT, VK_OEM_1,
+        VK_OEM_2, VK_OEM_3, VK_OEM_4, VK_OEM_COMMA, VK_OEM_MINUS, VK_PRIOR, VK_RCONTROL, VK_RETURN,
+        VK_RIGHT, VK_RMENU, VK_RSHIFT, VK_SHIFT, VK_SPACE, VK_UP, WH_KEYBOARD_LL, WM_KEYDOWN,
+        WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
     },
 };
 static mut SHARED_IGNORED_EVENTS: MaybeUninit<Mutex<Vec<i32>>> = MaybeUninit::uninit();
@@ -134,6 +134,7 @@ impl ExtensionMap {
         key_map.insert(VK_6, vec![KeyOutput::follow(VK_F6)]);
         key_map.insert(VK_7, vec![KeyOutput::follow(VK_F7)]);
         key_map.insert(VK_8, vec![KeyOutput::follow(VK_F8)]);
+        key_map.insert(VK_9, vec![KeyOutput::follow(VK_F9)]);
         key_map.insert(VK_0, vec![KeyOutput::follow(VK_F10)]);
         key_map.insert(VK_OEM_4, vec![KeyOutput::follow(VK_F11)]); // à key
         key_map.insert(VK_OEM_MINUS, vec![KeyOutput::follow(VK_F12)]); // à keys
@@ -153,7 +154,7 @@ impl ExtensionMap {
                 KeyOutput::up(VK_LCONTROL),
             ],
         );
-        key_map.insert(VK_Z, vec![KeyOutput::follow(VK_BROWSER_FORWARD)]);
+        key_map.insert(VK_R, vec![KeyOutput::follow(VK_BROWSER_FORWARD)]);
 
         key_map.insert(VK_T, vec![KeyOutput::follow(VK_INSERT)]);
         key_map.insert(VK_Y, vec![KeyOutput::follow(VK_PRIOR)]); //page up
@@ -301,13 +302,13 @@ unsafe extern "system" fn key_handler_callback(
         //when releasing the modifier
         //make sure to clean up the shift/control/alt
 
-        if is_key_active(VK_SHIFT) {
+        if is_key_active(VK_SHIFT) || is_key_active(VK_LSHIFT) || is_key_active(VK_RSHIFT) {
             send_key(VK_SHIFT, true);
         }
-        if is_key_active(VK_CONTROL) {
+        if is_key_active(VK_CONTROL) || is_key_active(VK_LCONTROL) || is_key_active(VK_RCONTROL) {
             send_key(VK_CONTROL, true);
         }
-        if is_key_active(VK_MENU) {
+        if is_key_active(VK_MENU) || is_key_active(VK_LMENU) || is_key_active(VK_RMENU) {
             send_key(VK_MENU, true);
         }
     }
