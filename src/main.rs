@@ -5,7 +5,7 @@ use std::{
     mem::{size_of, zeroed, MaybeUninit},
     os::windows::raw::HANDLE,
     ptr::null_mut,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     thread::{self},
 };
 
@@ -28,8 +28,10 @@ use winapi::{
     },
 };
 static mut SHARED_IGNORED_EVENTS: MaybeUninit<Mutex<Vec<i32>>> = MaybeUninit::uninit();
+
 fn main() {
     env_logger::init();
+
     unsafe {
         SHARED_IGNORED_EVENTS.write(Mutex::new(Vec::<i32>::new()));
     }
@@ -184,6 +186,7 @@ impl ExtensionMap {
         key_map.insert(VK_K, vec![KeyOutput::follow(VK_DOWN)]);
         key_map.insert(VK_L, vec![KeyOutput::follow(VK_RIGHT)]);
         key_map.insert(VK_M, vec![KeyOutput::follow(VK_DELETE)]);
+        key_map.insert(VK_OEM_3, vec![KeyOutput::follow(VK_CAPITAL)]);
 
         //=======================
         //bottom line of keyboard
@@ -301,15 +304,17 @@ unsafe extern "system" fn key_handler_callback(
     if vk == VK_F22 && is_release {
         //when releasing the modifier
         //make sure to clean up the shift/control/alt
-
-        if is_key_active(VK_SHIFT) || is_key_active(VK_LSHIFT) || is_key_active(VK_RSHIFT) {
-            send_key(VK_SHIFT, true);
-        }
-        if is_key_active(VK_CONTROL) || is_key_active(VK_LCONTROL) || is_key_active(VK_RCONTROL) {
-            send_key(VK_CONTROL, true);
-        }
-        if is_key_active(VK_MENU) || is_key_active(VK_LMENU) || is_key_active(VK_RMENU) {
-            send_key(VK_MENU, true);
+        for key in [
+            VK_LSHIFT,
+            VK_RSHIFT,
+            VK_RCONTROL,
+            VK_LCONTROL,
+            VK_LMENU,
+            VK_RMENU,
+        ] {
+            if is_key_active(key) {
+                send_key(key, true);
+            }
         }
     }
 
